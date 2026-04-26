@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>SOC Suite — Payload Lab</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;400;600;700&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="/static/css/style.css"/>
+</head>
+<body>
+<div class="app">
+  <div class="sidebar">
+    <div class="logo"><span class="logo-icon">⚡</span><span class="logo-text">SOC Console</span></div>
+    <nav class="nav">
+      <a href="/"        class="nav-item">▪ Dashboard</a>
+      <a href="/scanner" class="nav-item">◉ Network Scanner</a>
+      <a href="/logs"    class="nav-item">≡ Log Analysis</a>
+      <a href="/network" class="nav-item">⊞ Network Monitor</a>
+      <a href="/payload" class="nav-item active">⚙ Payload Lab</a>
+      <a href="/hash"    class="nav-item"># Hash Tools</a>
+      <a href="/reports" class="nav-item">📄 Reports</a>
+    </nav>
+    <div class="sidebar-footer"><span class="status-dot"></span>All Systems Online</div>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <span class="page-title">Payload Lab</span>
+      <span class="clock" id="clock">--:--:--</span>
+    </div>
+    <div class="content">
+
+      <div style="background:rgba(255,214,0,.07);border:1px solid rgba(255,214,0,.3);
+          border-radius:8px;padding:12px 16px;margin-bottom:14px;font-size:12px;
+          color:var(--yellow)">
+        ⚠ <strong>Educational Purpose Only.</strong>
+        These payloads are for authorized penetration testing and security research only.
+        Unauthorized use against systems you do not own is illegal.
+      </div>
+
+      <div class="card">
+        <div class="section-header">Payload Library</div>
+        <div class="payload-tabs" id="payload-tabs"></div>
+        <div id="category-desc" style="font-size:12px;color:var(--muted);margin-bottom:12px"></div>
+        <div id="payload-list"></div>
+      </div>
+
+      <div class="card">
+        <div class="section-header">Payload Encoder / Decoder</div>
+        <div class="input-row">
+          <input class="soc-input" id="encode-input" placeholder="Enter payload to encode..."/>
+          <select class="soc-input" style="flex:0;min-width:160px" id="encode-method">
+            <option value="url">URL Encode</option>
+            <option value="double_url">Double URL Encode</option>
+            <option value="base64">Base64</option>
+            <option value="html">HTML Entities</option>
+            <option value="hex">Hex Encode</option>
+            <option value="unicode">Unicode Escape</option>
+          </select>
+          <button class="soc-btn" onclick="encodePayload()">Encode</button>
+          <button class="soc-btn outline" onclick="decodePayload()">Decode</button>
+        </div>
+        <div>
+          <div class="hash-label">Output</div>
+          <div class="hash-result" id="encode-output" style="min-height:50px">—</div>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:8px">
+          <button class="soc-btn outline" style="font-size:11px" onclick="copyOutput()">Copy Output</button>
+          <button class="soc-btn outline" style="font-size:11px" onclick="swapInputOutput()">Use as Input</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-header">Payload Pattern Matcher</div>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:10px">
+          Test if a string matches known attack patterns.
+        </p>
+        <div class="input-row">
+          <input class="soc-input" id="test-input"
+            placeholder="Enter string to test against attack signatures..."/>
+          <button class="soc-btn" onclick="testPayload()">Test</button>
+        </div>
+        <div class="output-box" id="test-output" style="min-height:80px">
+          <span class="line-info">[READY] Enter a string to test</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+
+  setInterval(function() {
+    document.getElementById('clock').textContent =
+      new Date().toTimeString().split(' ')[0];
+  }, 1000);
+
+  // safe escape function - prevents XSS execution
+  function esc(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  var CATEGORIES = [
+    { key: 'sql',  label: 'SQL Injection' },
+    { key: 'xss',  label: 'XSS' },
+    { key: 'dos',  label: 'DoS' },
+    { key: 'cmd',  label: 'Cmd Injection' },
+    { key: 'path', label: 'Path Traversal' },
+  ];
+
+  var activeCategory = 'sql';
+
+  // Build tabs
+  var tabsEl = document.getElementById('payload-tabs');
+  CATEGORIES.forEach(function(c) {
+    var btn = document.createElement('div');
+    btn.className = 'ptab' + (c.key === activeCategory ? ' active' : '');
+    btn.textContent = c.label;
+    btn.setAttribute('data-key', c.key);
+    btn.onclick = function() { loadCategory(c.key); };
+    tabsEl.appendChild(btn);
+  });
+
+  function loadCategory(key) {
+    activeCategory = key;
+
+    // Update active tab
+    var tabs = document.querySelectorAll('.ptab');
+    tabs.forEach(function(t) {
+      t.classList.toggle('active', t.getAttribute('data-key') === key);
+    });
+
+    fetch('/api/payloads?category=' + key)
+      .then(function(res) { return res.json(); })
+      .then(function(data) {
+        if (data.error) { return; }
+
+        document.getElementById('category-desc').textContent = data.description;
+
+        var list = document.getElementById('payload-list');
+        list.innerHTML = '';
+
+        data.payloads.forEach(function(p, index) {
+          var div = document.createElement('div');
+          div.className = 'payload-item';
+
+          // Use textContent for safe display — never innerHTML with payload
+          var left = document.createElement('div');
+          left.style.flex = '1';
+
+          var payloadLine = document.createElement('div');
+          payloadLine.style.fontFamily = 'var(--mono)';
+          payloadLine.style.fontSize = '12px';
+          payloadLine.style.color = 'var(--yellow)';
+          payloadLine.textContent = p.payload; // textContent is SAFE
+
+          var descLine = document.createElement('div');
+          descLine.className = 'payload-desc';
+          descLine.textContent = p.description; // textContent is SAFE
+
+          left.appendChild(payloadLine);
+          left.appendChild(descLine);
+
+          var btnGroup = document.createElement('div');
+          btnGroup.style.display = 'flex';
+          btnGroup.style.gap = '6px';
+          btnGroup.style.flexShrink = '0';
+
+          var copyBtn = document.createElement('button');
+          copyBtn.className = 'copy-btn';
+          copyBtn.textContent = 'Copy';
+          copyBtn.onclick = (function(payload) {
+            return function() {
+              navigator.clipboard.writeText(payload).then(function() {
+                copyBtn.textContent = 'Copied!';
+                copyBtn.style.color = 'var(--green)';
+                setTimeout(function() {
+                  copyBtn.textContent = 'Copy';
+                  copyBtn.style.color = '';
+                }, 1500);
+              });
+            };
+          })(p.payload);
+
+          var encBtn = document.createElement('button');
+          encBtn.className = 'copy-btn';
+          encBtn.textContent = 'Encode';
+          encBtn.onclick = (function(payload) {
+            return function() {
+              document.getElementById('encode-input').value = payload;
+            };
+          })(p.payload);
+
+          btnGroup.appendChild(copyBtn);
+          btnGroup.appendChild(encBtn);
+
+          div.appendChild(left);
+          div.appendChild(btnGroup);
+          list.appendChild(div);
+        });
+      })
+      .catch(function(err) {
+        console.error('Error loading payloads:', err);
+      });
+  }
+
+  // Encoder
+  window.encodePayload = function() {
+    var text   = document.getElementById('encode-input').value;
+    var method = document.getElementById('encode-method').value;
+    if (!text) { return; }
+
+    fetch('/api/encode', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: text, method: method })
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+      var out = document.getElementById('encode-output');
+      if (data.error) {
+        out.textContent = 'Error: ' + data.error;
+      } else {
+        out.textContent = data.encoded; // textContent is SAFE
+      }
+    });
+  };
+
+  window.decodePayload = function() {
+    var text   = document.getElementById('encode-input').value;
+    var method = document.getElementById('encode-method').value;
+    var out    = document.getElementById('encode-output');
+    try {
+      var decoded = '';
+      if (method === 'url')         decoded = decodeURIComponent(text);
+      else if (method === 'base64') decoded = atob(text);
+      else if (method === 'html') {
+        var el = document.createElement('textarea');
+        el.innerHTML = text;
+        decoded = el.value;
+      }
+      else decoded = 'Decode not supported for this method. Use URL or Base64.';
+      out.textContent = decoded; // textContent is SAFE
+    } catch(e) {
+      out.textContent = 'Decode error: ' + e.message;
+    }
+  };
+
+  window.copyOutput = function() {
+    var txt = document.getElementById('encode-output').textContent;
+    navigator.clipboard.writeText(txt).then(function() {
+      document.getElementById('encode-output').style.color = 'var(--green)';
+      setTimeout(function() {
+        document.getElementById('encode-output').style.color = '';
+      }, 1000);
+    });
+  };
+
+  window.swapInputOutput = function() {
+    var out = document.getElementById('encode-output').textContent;
+    document.getElementById('encode-input').value = out;
+  };
+
+  // Pattern tester
+  var PATTERNS = {
+    'SQL Injection':  [/union\s+select/i, /'\s*or\s*'1/i, /sleep\s*\(/i, /drop\s+table/i, /admin'\s*--/i],
+    'XSS':            [/<script/i, /onerror\s*=/i, /javascript:/i, /onload\s*=/i],
+    'Path Traversal': [/\.\.\//,   /etc\/passwd/i, /windows\\system32/i],
+    'Cmd Injection':  [/;\s*(ls|cat|whoami|id)/i, /\|\s*(bash|sh)/i],
+    'DoS':            [/while\s*\(true\)/i, /sleep\s*\(\s*\d{4}/i],
+  };
+
+  window.testPayload = function() {
+    var input = document.getElementById('test-input').value;
+    var out   = document.getElementById('test-output');
+    if (!input) {
+      out.innerHTML = '<span class="line-err">[ERROR] Enter a string to test</span>';
+      return;
+    }
+
+    out.innerHTML = '<span class="line-info">[*] Testing: ' + esc(input.substring(0,80)) + '</span><br>';
+    var found = false;
+
+    Object.keys(PATTERNS).forEach(function(type) {
+      PATTERNS[type].forEach(function(pat) {
+        if (pat.test(input)) {
+          out.innerHTML += '<span class="line-err">[MATCH] ' + esc(type) + ' pattern detected!</span><br>';
+          found = true;
+        }
+      });
+    });
+
+    if (!found) {
+      out.innerHTML += '<span class="line-ok">[CLEAN] No known attack patterns matched.</span>';
+    }
+  };
+
+  // Load default
+  loadCategory('sql');
+
+})();
+</script>
+</body>
+</html>

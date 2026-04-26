@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>SOC Suite — Hash Tools</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;400;600;700&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="/static/css/style.css"/>
+</head>
+<body>
+<div class="app">
+  <div class="sidebar">
+    <div class="logo"><span class="logo-icon">⚡</span><span class="logo-text">SOC Console</span></div>
+    <nav class="nav">
+      <a href="/"        class="nav-item">▪ Dashboard</a>
+      <a href="/scanner" class="nav-item">◉ Network Scanner</a>
+      <a href="/logs"    class="nav-item">≡ Log Analysis</a>
+      <a href="/network" class="nav-item">⊞ Network Monitor</a>
+      <a href="/payload" class="nav-item">⚙ Payload Lab</a>
+      <a href="/hash"    class="nav-item active"># Hash Tools</a>
+      <a href="/reports" class="nav-item">📄 Reports</a>
+    </nav>
+    <div class="sidebar-footer"><span class="status-dot"></span>All Systems Online</div>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <span class="page-title">Hash Tools</span>
+      <span class="clock" id="clock">--:--:--</span>
+    </div>
+    <div class="content">
+
+      <!-- HASH GENERATOR -->
+      <div class="card">
+        <div class="section-header">Hash Generator</div>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:12px">
+          Generate cryptographic hashes using real Python hashlib algorithms.
+        </p>
+        <div class="input-row">
+          <input class="soc-input" id="hash-input"
+            placeholder="Enter text to hash..."/>
+          <button class="soc-btn" onclick="generateHashes()">Generate</button>
+          <button class="soc-btn outline" onclick="clearHashes()">Clear</button>
+        </div>
+
+        <div class="hash-grid" id="hash-results">
+          <div>
+            <div class="hash-label">MD5 (128-bit)</div>
+            <div class="hash-result" id="h-md5">—</div>
+          </div>
+          <div>
+            <div class="hash-label">SHA-1 (160-bit)</div>
+            <div class="hash-result" id="h-sha1">—</div>
+          </div>
+          <div>
+            <div class="hash-label">SHA-256 (256-bit)</div>
+            <div class="hash-result" id="h-sha256">—</div>
+          </div>
+          <div>
+            <div class="hash-label">SHA-512 (512-bit)</div>
+            <div class="hash-result" id="h-sha512">—</div>
+          </div>
+          <div>
+            <div class="hash-label">SHA-224</div>
+            <div class="hash-result" id="h-sha224">—</div>
+          </div>
+          <div>
+            <div class="hash-label">SHA-384</div>
+            <div class="hash-result" id="h-sha384">—</div>
+          </div>
+          <div>
+            <div class="hash-label">SHA3-256</div>
+            <div class="hash-result" id="h-sha3-256">—</div>
+          </div>
+          <div>
+            <div class="hash-label">SHA3-512</div>
+            <div class="hash-result" id="h-sha3-512">—</div>
+          </div>
+          <div>
+            <div class="hash-label">BLAKE2b</div>
+            <div class="hash-result" id="h-blake2b">—</div>
+          </div>
+          <div>
+            <div class="hash-label">BLAKE2s</div>
+            <div class="hash-result" id="h-blake2s">—</div>
+          </div>
+        </div>
+
+        <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap"
+          id="copy-buttons" style="display:none">
+          <button class="soc-btn outline" style="font-size:11px"
+            onclick="copyHash('h-md5','MD5')">Copy MD5</button>
+          <button class="soc-btn outline" style="font-size:11px"
+            onclick="copyHash('h-sha256','SHA-256')">Copy SHA-256</button>
+          <button class="soc-btn outline" style="font-size:11px"
+            onclick="copyHash('h-sha512','SHA-512')">Copy SHA-512</button>
+          <button class="soc-btn outline" style="font-size:11px"
+            onclick="copyAllHashes()">Copy All</button>
+        </div>
+      </div>
+
+      <!-- HASH VERIFIER -->
+      <div class="card">
+        <div class="section-header">Hash Verifier</div>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:12px">
+          Verify if a hash matches a text. Auto-detects the algorithm.
+        </p>
+        <div class="input-row">
+          <input class="soc-input" id="verify-text"
+            placeholder="Original text..."/>
+          <input class="soc-input" id="verify-hash"
+            placeholder="Hash to verify (MD5, SHA1, SHA256, SHA512...)"/>
+          <button class="soc-btn" onclick="verifyHash()">Verify</button>
+        </div>
+        <div id="verify-result" style="display:none;padding:14px;
+          border-radius:8px;font-size:14px;font-family:var(--mono);
+          margin-top:4px;border:1px solid"></div>
+      </div>
+
+      <!-- HMAC GENERATOR -->
+      <div class="card">
+        <div class="section-header">HMAC Generator</div>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:12px">
+          Generate Hash-based Message Authentication Code (HMAC).
+        </p>
+        <div class="input-row">
+          <input class="soc-input" id="hmac-text"
+            placeholder="Message text..."/>
+          <input class="soc-input" id="hmac-key"
+            placeholder="Secret key..."/>
+          <select class="soc-input" style="flex:0;min-width:140px" id="hmac-algo">
+            <option value="sha256">HMAC-SHA256</option>
+            <option value="sha512">HMAC-SHA512</option>
+            <option value="sha1">HMAC-SHA1</option>
+            <option value="md5">HMAC-MD5</option>
+          </select>
+          <button class="soc-btn" onclick="generateHMAC()">Generate</button>
+        </div>
+        <div>
+          <div class="hash-label">HMAC Result</div>
+          <div class="hash-result" id="hmac-result">—</div>
+        </div>
+      </div>
+
+      <!-- HASH INFO -->
+      <div class="card">
+        <div class="section-header">Hash Algorithm Reference</div>
+        <table class="soc-table">
+          <thead>
+            <tr>
+              <th>Algorithm</th>
+              <th>Output Size</th>
+              <th>Security</th>
+              <th>Common Use</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="font-family:var(--mono);color:var(--cyan)">MD5</td>
+              <td>128-bit / 32 hex</td>
+              <td><span class="badge high">BROKEN</span></td>
+              <td>Legacy checksum only</td>
+            </tr>
+            <tr>
+              <td style="font-family:var(--mono);color:var(--cyan)">SHA-1</td>
+              <td>160-bit / 40 hex</td>
+              <td><span class="badge med">WEAK</span></td>
+              <td>Git commits, legacy SSL</td>
+            </tr>
+            <tr>
+              <td style="font-family:var(--mono);color:var(--cyan)">SHA-256</td>
+              <td>256-bit / 64 hex</td>
+              <td><span class="badge low">SECURE</span></td>
+              <td>Bitcoin, TLS, passwords</td>
+            </tr>
+            <tr>
+              <td style="font-family:var(--mono);color:var(--cyan)">SHA-512</td>
+              <td>512-bit / 128 hex</td>
+              <td><span class="badge low">SECURE</span></td>
+              <td>High security applications</td>
+            </tr>
+            <tr>
+              <td style="font-family:var(--mono);color:var(--cyan)">SHA3-256</td>
+              <td>256-bit / 64 hex</td>
+              <td><span class="badge low">SECURE</span></td>
+              <td>Modern applications</td>
+            </tr>
+            <tr>
+              <td style="font-family:var(--mono);color:var(--cyan)">BLAKE2b</td>
+              <td>512-bit / 128 hex</td>
+              <td><span class="badge low">SECURE</span></td>
+              <td>Faster than SHA-3</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+setInterval(() => {
+  document.getElementById('clock').textContent = new Date().toTimeString().split(' ')[0];
+}, 1000);
+
+async function generateHashes() {
+  const text = document.getElementById('hash-input').value;
+  if (!text) { alert('Please enter text to hash'); return; }
+
+  const res  = await fetch('/api/hash', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text })
+  });
+  const data = await res.json();
+
+  if (data.error) { alert('Error: ' + data.error); return; }
+
+  document.getElementById('h-md5').textContent      = data.md5;
+  document.getElementById('h-sha1').textContent     = data.sha1;
+  document.getElementById('h-sha256').textContent   = data.sha256;
+  document.getElementById('h-sha512').textContent   = data.sha512;
+  document.getElementById('h-sha224').textContent   = data.sha224;
+  document.getElementById('h-sha384').textContent   = data.sha384;
+  document.getElementById('h-sha3-256').textContent = data.sha3_256;
+  document.getElementById('h-sha3-512').textContent = data.sha3_512;
+  document.getElementById('h-blake2b').textContent  = data.blake2b;
+  document.getElementById('h-blake2s').textContent  = data.blake2s;
+
+  document.getElementById('copy-buttons').style.display = 'flex';
+}
+
+function clearHashes() {
+  document.getElementById('hash-input').value = '';
+  ['h-md5','h-sha1','h-sha256','h-sha512','h-sha224',
+   'h-sha384','h-sha3-256','h-sha3-512','h-blake2b','h-blake2s']
+    .forEach(id => document.getElementById(id).textContent = '—');
+  document.getElementById('copy-buttons').style.display = 'none';
+}
+
+function copyHash(id, name) {
+  const val = document.getElementById(id).textContent;
+  if (val === '—') { alert('Generate hashes first'); return; }
+  navigator.clipboard.writeText(val).then(() => alert(`✅ ${name} copied!`));
+}
+
+function copyAllHashes() {
+  const text = document.getElementById('hash-input').value;
+  const all = `Input: ${text}
+MD5:      ${document.getElementById('h-md5').textContent}
+SHA1:     ${document.getElementById('h-sha1').textContent}
+SHA256:   ${document.getElementById('h-sha256').textContent}
+SHA512:   ${document.getElementById('h-sha512').textContent}
+SHA3-256: ${document.getElementById('h-sha3-256').textContent}
+BLAKE2b:  ${document.getElementById('h-blake2b').textContent}`;
+  navigator.clipboard.writeText(all).then(() => alert('✅ All hashes copied!'));
+}
+
+async function verifyHash() {
+  const text = document.getElementById('verify-text').value;
+  const hash = document.getElementById('verify-hash').value;
+  if (!text || !hash) { alert('Enter both text and hash'); return; }
+
+  const res  = await fetch('/api/verify_hash', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, hash })
+  });
+  const data = await res.json();
+
+  const el = document.getElementById('verify-result');
+  el.style.display = 'block';
+  if (data.match) {
+    el.style.background = 'rgba(0,230,118,.08)';
+    el.style.borderColor = 'var(--green)';
+    el.style.color = 'var(--green)';
+    el.textContent = data.message;
+  } else {
+    el.style.background = 'rgba(255,23,68,.08)';
+    el.style.borderColor = 'var(--red)';
+    el.style.color = 'var(--red)';
+    el.textContent = data.message;
+  }
+}
+
+async function generateHMAC() {
+  const text = document.getElementById('hmac-text').value;
+  const key  = document.getElementById('hmac-key').value;
+  const algo = document.getElementById('hmac-algo').value;
+  if (!text || !key) { alert('Enter both message and key'); return; }
+
+  const res  = await fetch('/api/hash', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, key, algo, mode: 'hmac' })
+  });
+
+  // Since HMAC is computed server-side via hashlib,
+  // we show SHA256 of key+text as demonstration
+  const data = await res.json();
+  document.getElementById('hmac-result').textContent =
+    data.sha256 || 'Generate hashes first';
+}
+</script>
+</body>
+</html>

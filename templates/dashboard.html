@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>SOC Suite — Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;400;600;700&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="/static/css/style.css"/>
+</head>
+<body>
+<div class="app">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="logo">
+      <span class="logo-icon">⚡</span>
+      <span class="logo-text">SOC Console</span>
+    </div>
+    <nav class="nav">
+      <a href="/"        class="nav-item active">▪ Dashboard</a>
+      <a href="/scanner" class="nav-item">◉ Network Scanner</a>
+      <a href="/logs"    class="nav-item">≡ Log Analysis</a>
+      <a href="/network" class="nav-item">⊞ Network Monitor</a>
+      <a href="/payload" class="nav-item">⚙ Payload Lab</a>
+      <a href="/hash"    class="nav-item"># Hash Tools</a>
+      <a href="/reports" class="nav-item">📄 Reports</a>
+    </nav>
+    <div class="sidebar-footer">
+      <span class="status-dot"></span>All Systems Online
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+    <div class="topbar">
+      <span class="page-title">Security Operations Center</span>
+      <span class="clock" id="clock">--:--:--</span>
+    </div>
+
+    <div class="content">
+
+      <!-- STAT CARDS -->
+      <div class="stat-grid">
+        <div class="stat-card danger">
+          <div class="stat-label">Threat Level</div>
+          <div class="stat-value">HIGH</div>
+        </div>
+        <div class="stat-card warn">
+          <div class="stat-label">Active Alerts</div>
+          <div class="stat-value" id="alert-count">5</div>
+        </div>
+        <div class="stat-card warn">
+          <div class="stat-label">Risk Score</div>
+          <div class="stat-value">70%</div>
+        </div>
+        <div class="stat-card info">
+          <div class="stat-label">Last Scan</div>
+          <div class="stat-value" id="last-scan">--:--:--</div>
+        </div>
+      </div>
+
+      <!-- LIVE FEED -->
+      <div class="card">
+        <div class="section-header">Live Activity Feed</div>
+        <div class="feed-scroll">
+          <div class="feed-inner" id="feed-inner"></div>
+        </div>
+      </div>
+
+      <!-- RECENT ALERTS -->
+      <div class="card">
+        <div class="section-header">Recent Alerts</div>
+        <div id="alert-list"></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+// Clock
+setInterval(() => {
+  const t = new Date().toTimeString().split(' ')[0];
+  document.getElementById('clock').textContent = t;
+  document.getElementById('last-scan').textContent = t;
+}, 1000);
+
+// Feed
+const feedMsgs = [
+  '[INFO] Monitoring pipeline active  ',
+  '[INFO] Sensors reporting  ',
+  '[ALERT] Suspicious login detected  ',
+  '[ALERT] Possible SQL injection  ',
+  '[INFO] Threat hunting completed  ',
+  '[WARN] Port scan from 10.0.0.55  ',
+  '[ALERT] XSS payload detected  ',
+  '[INFO] Firewall rules updated  ',
+];
+const msg = feedMsgs.join('   ');
+document.getElementById('feed-inner').textContent = msg + '   ' + msg;
+
+// Alerts
+const alerts = [
+  { sev: 'high',   msg: 'SQL Injection attempt from 192.168.1.105' },
+  { sev: 'high',   msg: 'XSS payload detected in User-Agent header' },
+  { sev: 'med',    msg: 'Multiple failed SSH logins from 10.0.0.44' },
+  { sev: 'med',    msg: 'Port scan detected from 172.16.0.8' },
+  { sev: 'low',    msg: 'Unusual outbound DNS traffic volume' },
+];
+const al = document.getElementById('alert-list');
+alerts.forEach(a => {
+  al.innerHTML += `
+    <div class="alert-row">
+      <span class="badge ${a.sev}">${a.sev.toUpperCase()}</span>
+      <span>${a.msg}</span>
+    </div>`;
+});
+</script>
+</body>
+</html>

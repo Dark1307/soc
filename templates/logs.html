@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>SOC Suite — Log Analysis</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;400;600;700&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="/static/css/style.css"/>
+</head>
+<body>
+<div class="app">
+  <div class="sidebar">
+    <div class="logo"><span class="logo-icon">⚡</span><span class="logo-text">SOC Console</span></div>
+    <nav class="nav">
+      <a href="/"        class="nav-item">▪ Dashboard</a>
+      <a href="/scanner" class="nav-item">◉ Network Scanner</a>
+      <a href="/logs"    class="nav-item active">≡ Log Analysis</a>
+      <a href="/network" class="nav-item">⊞ Network Monitor</a>
+      <a href="/payload" class="nav-item">⚙ Payload Lab</a>
+      <a href="/hash"    class="nav-item"># Hash Tools</a>
+      <a href="/reports" class="nav-item">📄 Reports</a>
+    </nav>
+    <div class="sidebar-footer"><span class="status-dot"></span>All Systems Online</div>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <span class="page-title">Log Analysis</span>
+      <span class="clock" id="clock">--:--:--</span>
+    </div>
+    <div class="content">
+
+      <div class="card">
+        <div class="section-header">Log Analysis Engine</div>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:10px">
+          Paste your server/access logs below. The engine detects SQL Injection,
+          XSS, Path Traversal, Command Injection and DoS attack patterns.
+        </p>
+        <textarea class="log-textarea" id="log-input"
+          placeholder="Paste your logs here..."></textarea>
+        <div style="display:flex;gap:10px">
+          <button class="soc-btn" id="btn-analyze" onclick="analyzeLogs()">Analyze Logs</button>
+          <button class="soc-btn outline" onclick="loadSample()">Load Sample Logs</button>
+          <button class="soc-btn outline" onclick="clearAll()">Clear</button>
+        </div>
+      </div>
+
+      <div id="summary-section" style="display:none">
+
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);
+            gap:10px;margin-bottom:14px" id="attack-grid"></div>
+
+        <div style="display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap">
+          <div class="stat-card danger" style="flex:1;padding:12px 16px">
+            <div class="stat-label">Total Attacks</div>
+            <div class="stat-value" style="font-size:22px" id="total-attacks">0</div>
+          </div>
+          <div class="stat-card warn" style="flex:1;padding:12px 16px">
+            <div class="stat-label">Risk Level</div>
+            <div class="stat-value" style="font-size:22px" id="risk-level">LOW</div>
+          </div>
+          <div class="stat-card info" style="flex:1;padding:12px 16px">
+            <div class="stat-label">Lines Analyzed</div>
+            <div class="stat-value" style="font-size:22px" id="lines-analyzed">0</div>
+          </div>
+          <div class="stat-card ok" style="flex:1;padding:12px 16px">
+            <div class="stat-label">Unique Events</div>
+            <div class="stat-value" style="font-size:22px" id="unique-events">0</div>
+          </div>
+        </div>
+
+        <div class="card" id="attackers-card" style="display:none">
+          <div class="section-header">Top Attacker IPs</div>
+          <table class="soc-table">
+            <thead>
+              <tr>
+                <th>IP Address</th>
+                <th>Attack Count</th>
+                <th>Attack Types</th>
+              </tr>
+            </thead>
+            <tbody id="attackers-body"></tbody>
+          </table>
+        </div>
+
+        <div class="card">
+          <div class="section-header">Detected Attack Events</div>
+          <div class="output-box" id="events-output"></div>
+          <div style="margin-top:12px">
+            <button class="soc-btn outline" onclick="saveReport()">Save PDF Report</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+
+  // ─── SAFE ESCAPE FUNCTION ───
+  // This prevents XSS payloads in logs from executing in browser
+  function esc(str) {
+    return String(str)
+      .replace(/&/g,  '&amp;')
+      .replace(/</g,  '&lt;')
+      .replace(/>/g,  '&gt;')
+      .replace(/"/g,  '&quot;')
+      .replace(/'/g,  '&#39;')
+      .replace(/\//g, '&#47;');
+  }
+
+  // ─── CLOCK ───
+  setInterval(function() {
+    document.getElementById('clock').textContent =
+      new Date().toTimeString().split(' ')[0];
+  }, 1000);
+
+  var lastResult = null;
+
+  // ─── SAMPLE LOGS ───
+  var SAMPLE =
+    '192.168.1.105 - - [15/Jan/2024:10:23:41] "GET /search?q=SCRIPT_TAG_ALERT HTTP/1.1" 200\n' +
+    '10.0.0.44 - - [15/Jan/2024:10:24:02] "POST /login?user=admin\'--&pass=x HTTP/1.1" 403\n' +
+    '172.16.0.2 - - [15/Jan/2024:10:25:10] "GET /../../../../etc/passwd HTTP/1.1" 404\n' +
+    '192.168.1.200 - - [15/Jan/2024:10:25:55] "GET /cmd?exec=;ls+-la HTTP/1.1" 200\n' +
+    '10.0.0.55 - - [15/Jan/2024:10:26:30] "GET /page?id=1 UNION SELECT username,password FROM users-- HTTP/1.1" 500\n' +
+    '192.168.1.105 - - [15/Jan/2024:10:27:01] "GET /index.php?page=../../../etc/shadow HTTP/1.1" 404\n' +
+    '10.0.0.44 - - [15/Jan/2024:10:28:10] "GET /page?id=1\' AND SLEEP(5)-- HTTP/1.1" 500\n' +
+    '192.168.1.55 - - [15/Jan/2024:10:29:00] "GET /shell?cmd=whoami HTTP/1.1" 200\n' +
+    '10.0.0.99 - - [15/Jan/2024:10:30:15] "GET /file?name=../../../../windows/system32/hosts HTTP/1.1" 404\n' +
+    '10.0.0.88 - - [15/Jan/2024:10:31:00] "POST /comment?text=IMG_ONERROR HTTP/1.1" 200';
+
+  window.loadSample = function() {
+    document.getElementById('log-input').value = SAMPLE;
+  };
+
+  window.clearAll = function() {
+    document.getElementById('log-input').value = '';
+    document.getElementById('summary-section').style.display = 'none';
+    lastResult = null;
+  };
+
+  // ─── ANALYZE LOGS ───
+  window.analyzeLogs = function() {
+    var logs = document.getElementById('log-input').value.trim();
+    if (!logs) {
+      document.getElementById('summary-section').style.display = 'block';
+      document.getElementById('events-output').innerHTML =
+        '<span class="line-err">[ERROR] Please paste logs or click Load Sample Logs</span>';
+      return;
+    }
+
+    var btn = document.getElementById('btn-analyze');
+    btn.textContent = 'Analyzing...';
+    btn.disabled = true;
+
+    fetch('/api/analyze_logs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ logs: logs })
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+      btn.textContent = 'Analyze Logs';
+      btn.disabled = false;
+
+      if (data.error) {
+        document.getElementById('summary-section').style.display = 'block';
+        document.getElementById('events-output').innerHTML =
+          '<span class="line-err">[ERROR] ' + esc(data.error) + '</span>';
+        return;
+      }
+
+      lastResult = data;
+      document.getElementById('summary-section').style.display = 'block';
+
+      // Stats
+      document.getElementById('total-attacks').textContent  = data.total_attacks;
+      document.getElementById('lines-analyzed').textContent = data.total_lines;
+      document.getElementById('unique-events').textContent  = data.events.length;
+
+      var riskEl = document.getElementById('risk-level');
+      riskEl.textContent = data.risk_level;
+      var riskColors = {
+        'LOW':      'var(--green)',
+        'MEDIUM':   'var(--yellow)',
+        'HIGH':     'var(--red)',
+        'CRITICAL': 'var(--red)'
+      };
+      riskEl.style.color = riskColors[data.risk_level] || 'var(--cyan)';
+
+      // Attack type cards
+      var grid = document.getElementById('attack-grid');
+      grid.innerHTML = '';
+      Object.keys(data.attack_counts).forEach(function(type) {
+        var count = data.attack_counts[type];
+        var div = document.createElement('div');
+        div.className = 'stat-card';
+        div.style.padding = '12px';
+        div.style.textAlign = 'center';
+        div.style.borderColor = count > 0 ? 'var(--red)' : 'var(--border)';
+
+        var val = document.createElement('div');
+        val.className = 'stat-value';
+        val.style.fontSize = '24px';
+        val.style.color = count > 0 ? 'var(--red)' : 'var(--muted)';
+        val.textContent = count;
+
+        var label = document.createElement('div');
+        label.className = 'stat-label';
+        label.style.marginTop = '4px';
+        label.style.fontSize = '10px';
+        label.textContent = type;
+
+        div.appendChild(val);
+        div.appendChild(label);
+        grid.appendChild(div);
+      });
+
+      // Top attackers
+      if (data.top_attackers && data.top_attackers.length > 0) {
+        document.getElementById('attackers-card').style.display = 'block';
+        var tbody = document.getElementById('attackers-body');
+        tbody.innerHTML = '';
+        data.top_attackers.forEach(function(a) {
+          var tr = document.createElement('tr');
+
+          var td1 = document.createElement('td');
+          td1.style.fontFamily = 'var(--mono)';
+          td1.style.color = 'var(--cyan)';
+          td1.textContent = a.ip;
+
+          var td2 = document.createElement('td');
+          var badge = document.createElement('span');
+          badge.className = 'badge high';
+          badge.textContent = a.count;
+          td2.appendChild(badge);
+
+          var td3 = document.createElement('td');
+          a.types.forEach(function(t) {
+            var sp = document.createElement('span');
+            sp.className = 'badge med';
+            sp.style.marginRight = '4px';
+            sp.textContent = t;
+            td3.appendChild(sp);
+          });
+
+          tr.appendChild(td1);
+          tr.appendChild(td2);
+          tr.appendChild(td3);
+          tbody.appendChild(tr);
+        });
+      }
+
+      // Events output — using DOM, never innerHTML with user data
+      var out = document.getElementById('events-output');
+      out.innerHTML = '';
+
+      if (data.events.length === 0) {
+        var clean = document.createElement('span');
+        clean.className = 'line-ok';
+        clean.textContent = '[CLEAN] No attack patterns detected.';
+        out.appendChild(clean);
+      } else {
+        data.events.forEach(function(e) {
+          var span = document.createElement('span');
+          var isHigh = ['SQL Injection','XSS','Command Injection'].indexOf(e.type) >= 0;
+          span.className = isHigh ? 'line-err' : 'line-warn';
+          // textContent prevents any payload from executing
+          span.textContent = '[' + e.severity + '][' + e.type + '] IP:' + e.ip + ' — ' + e.line;
+          out.appendChild(span);
+          out.appendChild(document.createElement('br'));
+        });
+      }
+
+    })
+    .catch(function(err) {
+      btn.textContent = 'Analyze Logs';
+      btn.disabled = false;
+      document.getElementById('summary-section').style.display = 'block';
+      document.getElementById('events-output').innerHTML =
+        '<span class="line-err">[ERROR] ' + esc(err.message) + '</span>';
+    });
+  };
+
+  // ─── SAVE REPORT ───
+  window.saveReport = function() {
+    if (!lastResult) {
+      document.getElementById('events-output').innerHTML +=
+        '<br><span class="line-err">[ERROR] Run analysis first</span>';
+      return;
+    }
+
+    var findings = lastResult.events.map(function(e) {
+      return {
+        type:     e.type,
+        severity: e.severity,
+        details:  'IP: ' + e.ip + ' — ' + e.line.substring(0, 100)
+      };
+    });
+
+    fetch('/api/reports/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type:     'Log Analysis',
+        target:   'Log File',
+        severity: lastResult.risk_level,
+        findings: findings,
+        summary:  'Log analysis detected ' + lastResult.total_attacks +
+                  ' attacks across ' + lastResult.total_lines +
+                  ' log lines. Risk level: ' + lastResult.risk_level + '.'
+      })
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+      var out = document.getElementById('events-output');
+      var br  = document.createElement('br');
+      var msg = document.createElement('span');
+      if (data.status === 'success') {
+        msg.className = 'line-ok';
+        msg.textContent = '[OK] Report saved: ' + data.filename;
+      } else {
+        msg.className = 'line-err';
+        msg.textContent = '[ERROR] ' + (data.error || 'Unknown error');
+      }
+      out.appendChild(br);
+      out.appendChild(msg);
+    })
+    .catch(function(err) {
+      var out = document.getElementById('events-output');
+      var br  = document.createElement('br');
+      var msg = document.createElement('span');
+      msg.className   = 'line-err';
+      msg.textContent = '[ERROR] ' + err.message;
+      out.appendChild(br);
+      out.appendChild(msg);
+    });
+  };
+
+})();
+</script>
+</body>
+</html>

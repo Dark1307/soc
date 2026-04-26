@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>SOC Suite — Network Scanner</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;400;600;700&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="/static/css/style.css"/>
+</head>
+<body>
+<div class="app">
+  <div class="sidebar">
+    <div class="logo"><span class="logo-icon">⚡</span><span class="logo-text">SOC Console</span></div>
+    <nav class="nav">
+      <a href="/"        class="nav-item">▪ Dashboard</a>
+      <a href="/scanner" class="nav-item active">◉ Network Scanner</a>
+      <a href="/logs"    class="nav-item">≡ Log Analysis</a>
+      <a href="/network" class="nav-item">⊞ Network Monitor</a>
+      <a href="/payload" class="nav-item">⚙ Payload Lab</a>
+      <a href="/hash"    class="nav-item"># Hash Tools</a>
+      <a href="/reports" class="nav-item">📄 Reports</a>
+    </nav>
+    <div class="sidebar-footer"><span class="status-dot"></span>All Systems Online</div>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <span class="page-title">Network Scanner</span>
+      <span class="clock" id="clock">--:--:--</span>
+    </div>
+    <div class="content">
+
+      <div class="card">
+        <div class="section-header">Port Scanner</div>
+        <div class="input-row">
+          <input class="soc-input" id="target"
+            placeholder="Enter IP address (e.g. 127.0.0.1 or scanme.nmap.org)"
+            value="127.0.0.1"/>
+          <select class="soc-input" style="flex:0;min-width:180px" id="scan-type">
+            <option value="common">Common Ports</option>
+            <option value="full">Full Scan (1-1024)</option>
+            <option value="service">Service Detection</option>
+            <option value="stealth">Stealth Scan</option>
+          </select>
+          <button class="soc-btn" id="scan-btn">Scan</button>
+        </div>
+        <div class="output-box" id="scan-output">
+          <span class="line-info">[SCANNER READY] Enter a target IP and click Scan</span>
+        </div>
+      </div>
+
+      <div class="card" id="results-card" style="display:none">
+        <div class="section-header">Scan Results</div>
+        <div style="display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap">
+          <div class="stat-card ok" style="flex:1;padding:12px 16px">
+            <div class="stat-label">Open Ports</div>
+            <div class="stat-value" style="font-size:22px" id="open-count">0</div>
+          </div>
+          <div class="stat-card danger" style="flex:1;padding:12px 16px">
+            <div class="stat-label">Risks Found</div>
+            <div class="stat-value" style="font-size:22px" id="risk-count">0</div>
+          </div>
+          <div class="stat-card info" style="flex:1;padding:12px 16px">
+            <div class="stat-label">Scan Time</div>
+            <div class="stat-value" style="font-size:22px" id="scan-time">0s</div>
+          </div>
+          <div class="stat-card warn" style="flex:1;padding:12px 16px">
+            <div class="stat-label">Target IP</div>
+            <div class="stat-value" style="font-size:16px" id="target-ip">—</div>
+          </div>
+        </div>
+        <table class="soc-table">
+          <thead>
+            <tr>
+              <th>Port</th>
+              <th>State</th>
+              <th>Service</th>
+              <th>Version / Banner</th>
+            </tr>
+          </thead>
+          <tbody id="port-body"></tbody>
+        </table>
+        <div style="margin-top:14px">
+          <button class="soc-btn outline" id="save-btn">Save Report</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+
+  // Clock
+  setInterval(function() {
+    document.getElementById('clock').textContent =
+      new Date().toTimeString().split(' ')[0];
+  }, 1000);
+
+  var lastResult = null;
+
+  // Escape function
+  function esc(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  // Scan button click
+  document.getElementById('scan-btn').addEventListener('click', function() {
+    runScan();
+  });
+
+  // Also allow Enter key
+  document.getElementById('target').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') runScan();
+  });
+
+  // Save button click
+  document.getElementById('save-btn').addEventListener('click', function() {
+    saveReport();
+  });
+
+  function runScan() {
+    var target   = document.getElementById('target').value.trim();
+    var scanType = document.getElementById('scan-type').value;
+    var output   = document.getElementById('scan-output');
+    var btn      = document.getElementById('scan-btn');
+
+    if (!target) {
+      output.innerHTML = '<span class="line-err">[ERROR] Please enter a target IP address</span>';
+      return;
+    }
+
+    // Update UI
+    btn.textContent = 'Scanning...';
+    btn.disabled    = true;
+    output.innerHTML = '<span class="line-info">[*] Starting ' + esc(scanType) +
+                       ' scan on ' + esc(target) + '...</span><br>' +
+                       '<span class="line-info">[*] This may take 30-60 seconds...</span>';
+    document.getElementById('results-card').style.display = 'none';
+
+    // Call API
+    fetch('/api/scan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target: target, scan_type: scanType })
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+      btn.textContent = 'Scan';
+      btn.disabled    = false;
+
+      if (data.error) {
+        output.innerHTML = '<span class="line-err">[ERROR] ' + esc(data.error) + '</span>';
+        return;
+      }
+
+      lastResult = data;
+
+      // Show logs
+      output.innerHTML = '';
+      data.logs.forEach(function(log) {
+        var span = document.createElement('span');
+        if (log.indexOf('[RISK]') >= 0 || log.indexOf('[ERROR]') >= 0) {
+          span.className = 'line-err';
+        } else if (log.indexOf('[WARN]') >= 0) {
+          span.className = 'line-warn';
+        } else if (log.indexOf('[INFO]') >= 0) {
+          span.className = 'line-info';
+        } else {
+          span.className = 'line-ok';
+        }
+        span.textContent = log;
+        output.appendChild(span);
+        output.appendChild(document.createElement('br'));
+      });
+
+      // Show results
+      document.getElementById('results-card').style.display = 'block';
+      document.getElementById('open-count').textContent = data.open_ports.length;
+      document.getElementById('scan-time').textContent  = data.duration + 's';
+      document.getElementById('target-ip').textContent  = data.ip;
+
+      var risks = data.logs.filter(function(l) {
+        return l.indexOf('[RISK]') >= 0;
+      }).length;
+      document.getElementById('risk-count').textContent = risks;
+
+      // Fill table
+      var tbody = document.getElementById('port-body');
+      tbody.innerHTML = '';
+
+      if (data.open_ports.length === 0) {
+        var tr = document.createElement('tr');
+        var td = document.createElement('td');
+        td.colSpan = 4;
+        td.style.textAlign = 'center';
+        td.style.color = 'var(--muted)';
+        td.textContent = 'No open ports found';
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+      } else {
+        var riskyPorts = [21, 23, 3389, 445, 1433, 3306];
+        data.open_ports.forEach(function(p) {
+          var isRisky = riskyPorts.indexOf(p.port) >= 0;
+          var tr = document.createElement('tr');
+
+          var td1 = document.createElement('td');
+          td1.style.fontFamily = 'var(--mono)';
+          td1.style.color = 'var(--cyan)';
+          td1.textContent = p.port + '/tcp';
+
+          var td2 = document.createElement('td');
+          var badge = document.createElement('span');
+          badge.className = 'badge low';
+          badge.textContent = 'OPEN';
+          td2.appendChild(badge);
+
+          var td3 = document.createElement('td');
+          td3.textContent = p.service;
+
+          var td4 = document.createElement('td');
+          td4.style.fontFamily = 'var(--mono)';
+          td4.style.fontSize = '11px';
+          td4.style.color = 'var(--muted)';
+          td4.textContent = p.version;
+          if (isRisky) {
+            var riskBadge = document.createElement('span');
+            riskBadge.className = 'badge high';
+            riskBadge.style.marginLeft = '8px';
+            riskBadge.textContent = 'RISK';
+            td4.appendChild(riskBadge);
+          }
+
+          tr.appendChild(td1);
+          tr.appendChild(td2);
+          tr.appendChild(td3);
+          tr.appendChild(td4);
+          tbody.appendChild(tr);
+        });
+      }
+    })
+    .catch(function(err) {
+      btn.textContent = 'Scan';
+      btn.disabled    = false;
+      output.innerHTML = '<span class="line-err">[ERROR] ' + esc(err.message) +
+        '</span><br><span class="line-warn">[*] Make sure Flask server is running</span>';
+    });
+  }
+
+  function saveReport() {
+    if (!lastResult) {
+      document.getElementById('scan-output').innerHTML +=
+        '<br><span class="line-err">[ERROR] Run a scan first</span>';
+      return;
+    }
+
+    var findings = lastResult.open_ports.map(function(p) {
+      var riskyPorts = [21, 23, 3389, 445, 1433, 3306];
+      return {
+        type:     'Open Port',
+        severity: riskyPorts.indexOf(p.port) >= 0 ? 'HIGH' : 'LOW',
+        details:  'Port ' + p.port + '/tcp — ' + p.service + ' — ' + p.version
+      };
+    });
+
+    fetch('/api/reports/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type:     'Port Scan',
+        target:   lastResult.target,
+        severity: findings.some(function(f) { return f.severity === 'HIGH'; }) ? 'HIGH' : 'LOW',
+        findings: findings,
+        summary:  'Port scan on ' + lastResult.target + ' found ' +
+                  lastResult.open_ports.length + ' open ports in ' +
+                  lastResult.duration + 's.'
+      })
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+      var out = document.getElementById('scan-output');
+      var br  = document.createElement('br');
+      var msg = document.createElement('span');
+      if (data.status === 'success') {
+        msg.className = 'line-ok';
+        msg.textContent = '[OK] Report saved: ' + data.filename;
+      } else {
+        msg.className = 'line-err';
+        msg.textContent = '[ERROR] ' + (data.error || 'Unknown');
+      }
+      out.appendChild(br);
+      out.appendChild(msg);
+    });
+  }
+
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>SOC Suite — Network Monitor</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;400;600;700&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="/static/css/style.css"/>
+</head>
+<body>
+<div class="app">
+  <div class="sidebar">
+    <div class="logo"><span class="logo-icon">⚡</span><span class="logo-text">SOC Console</span></div>
+    <nav class="nav">
+      <a href="/"        class="nav-item">▪ Dashboard</a>
+      <a href="/scanner" class="nav-item">◉ Network Scanner</a>
+      <a href="/logs"    class="nav-item">≡ Log Analysis</a>
+      <a href="/network" class="nav-item active">⊞ Network Monitor</a>
+      <a href="/payload" class="nav-item">⚙ Payload Lab</a>
+      <a href="/hash"    class="nav-item"># Hash Tools</a>
+      <a href="/reports" class="nav-item">📄 Reports</a>
+    </nav>
+    <div class="sidebar-footer"><span class="status-dot"></span>All Systems Online</div>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <span class="page-title">Network Monitor</span>
+      <span class="clock" id="clock">--:--:--</span>
+    </div>
+    <div class="content">
+
+      <!-- CONTROLS -->
+      <div class="card">
+        <div class="section-header">Live Traffic Capture</div>
+        <div style="display:flex;gap:10px;margin-bottom:10px">
+          <button class="soc-btn" id="start-btn" onclick="startCapture()">▶ Start Capture</button>
+          <button class="soc-btn danger" id="stop-btn" onclick="stopCapture()" disabled>⏹ Stop Capture</button>
+          <button class="soc-btn outline" onclick="clearMonitor()">Clear</button>
+          <button class="soc-btn outline" onclick="saveReport()">Save Report</button>
+        </div>
+        <p style="font-size:11px;color:var(--muted)">
+          ⚠ Note: Real packet capture requires admin/root privileges and Npcap on Windows.
+          This simulation demonstrates traffic monitoring with threat detection.
+        </p>
+      </div>
+
+      <!-- STATS -->
+      <div class="stat-grid">
+        <div class="stat-card info">
+          <div class="stat-label">Total Packets</div>
+          <div class="stat-value" id="pkt-total">0</div>
+        </div>
+        <div class="stat-card ok">
+          <div class="stat-label">Normal</div>
+          <div class="stat-value" id="pkt-normal">0</div>
+        </div>
+        <div class="stat-card danger">
+          <div class="stat-label">Suspicious</div>
+          <div class="stat-value" id="pkt-sus">0</div>
+        </div>
+        <div class="stat-card warn">
+          <div class="stat-label">Blocked</div>
+          <div class="stat-value" id="pkt-blocked">0</div>
+        </div>
+      </div>
+
+      <!-- LIVE TRAFFIC TABLE -->
+      <div class="card">
+        <div class="section-header">Live Packet Feed</div>
+        <div class="net-header">
+          <span>TIME</span>
+          <span>SRC IP</span>
+          <span>DST IP</span>
+          <span>PORT</span>
+          <span>PROTO</span>
+          <span>STATUS</span>
+        </div>
+        <div class="net-monitor" id="net-monitor">
+          <div style="color:var(--muted);font-size:12px;padding:10px">
+            Click "Start Capture" to begin monitoring...
+          </div>
+        </div>
+      </div>
+
+      <!-- THREAT ALERTS -->
+      <div class="card" id="threat-card" style="display:none">
+        <div class="section-header">Threat Alerts</div>
+        <div id="threat-list"></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+setInterval(() => {
+  document.getElementById('clock').textContent = new Date().toTimeString().split(' ')[0];
+}, 1000);
+
+let pollInterval = null;
+let threatList = [];
+
+async function startCapture() {
+  const res = await fetch('/api/network/start', { method: 'POST' });
+  const data = await res.json();
+
+  document.getElementById('start-btn').disabled = true;
+  document.getElementById('stop-btn').disabled = false;
+  document.getElementById('net-monitor').innerHTML = '';
+
+  // Poll every second
+  pollInterval = setInterval(fetchPackets, 1000);
+}
+
+async function stopCapture() {
+  const res = await fetch('/api/network/stop', { method: 'POST' });
+  const data = await res.json();
+
+  clearInterval(pollInterval);
+  document.getElementById('start-btn').disabled = false;
+  document.getElementById('stop-btn').disabled = true;
+}
+
+async function fetchPackets() {
+  try {
+    const res = await fetch('/api/network/packets');
+    const data = await res.json();
+
+    // Update stats
+    document.getElementById('pkt-total').textContent   = data.stats.total;
+    document.getElementById('pkt-normal').textContent  = data.stats.normal;
+    document.getElementById('pkt-sus').textContent     = data.stats.suspicious;
+    document.getElementById('pkt-blocked').textContent = data.stats.blocked;
+
+    // Update packet feed
+    const monitor = document.getElementById('net-monitor');
+    monitor.innerHTML = '';
+    data.packets.forEach(p => {
+      const cls = p.status === 'suspicious' ? 'suspicious' : 'normal';
+      const label = p.threat_label
+        ? `<span style="background:rgba(255,23,68,.15);color:var(--red);
+            padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px">
+            ${p.threat_label}</span>`
+        : '';
+      monitor.innerHTML += `
+        <div class="net-row ${cls}">
+          <span>${p.timestamp}</span>
+          <span>${p.src_ip}</span>
+          <span>${p.dst_ip}</span>
+          <span>${p.port}</span>
+          <span>${p.proto}</span>
+          <span>${p.status.toUpperCase()}${label}</span>
+        </div>`;
+
+      // Add to threat list if suspicious
+      if (p.status === 'suspicious' && p.threats.length > 0) {
+        const key = p.src_ip + p.threat_label;
+        if (!threatList.find(t => t.key === key)) {
+          threatList.unshift({
+            key, src: p.src_ip, dst: p.dst_ip,
+            label: p.threat_label, time: p.timestamp
+          });
+        }
+      }
+    });
+
+    // Update threat list
+    if (threatList.length > 0) {
+      document.getElementById('threat-card').style.display = 'block';
+      const tl = document.getElementById('threat-list');
+      tl.innerHTML = threatList.slice(0, 10).map(t => `
+        <div class="alert-row">
+          <span class="badge high">THREAT</span>
+          <span style="flex:1">
+            <strong style="color:var(--cyan)">${t.src}</strong>
+            → ${t.dst} —
+            <span style="color:var(--red)">${t.label}</span>
+          </span>
+          <span style="font-family:var(--mono);font-size:11px;
+            color:var(--muted)">${t.time}</span>
+        </div>`).join('');
+    }
+
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+function clearMonitor() {
+  document.getElementById('net-monitor').innerHTML =
+    '<div style="color:var(--muted);font-size:12px;padding:10px">Cleared.</div>';
+  document.getElementById('pkt-total').textContent   = '0';
+  document.getElementById('pkt-normal').textContent  = '0';
+  document.getElementById('pkt-sus').textContent     = '0';
+  document.getElementById('pkt-blocked').textContent = '0';
+  threatList = [];
+  document.getElementById('threat-card').style.display = 'none';
+}
+
+async function saveReport() {
+  const total  = document.getElementById('pkt-total').textContent;
+  const sus    = document.getElementById('pkt-sus').textContent;
+  const findings = threatList.map(t => ({
+    type: 'Network Threat',
+    severity: 'HIGH',
+    details: `${t.src} → ${t.dst} — ${t.label}`
+  }));
+  const res = await fetch('/api/reports/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      type: 'Network Monitor',
+      target: 'Network Interface',
+      severity: parseInt(sus) > 0 ? 'HIGH' : 'LOW',
+      findings,
+      summary: `Network monitoring captured ${total} packets. ${sus} suspicious packets detected. ${threatList.length} unique threats identified.`
+    })
+  });
+  const data = await res.json();
+  alert('✅ Report saved: ' + data.filename);
+}
+</script>
+</body>
+</html>
